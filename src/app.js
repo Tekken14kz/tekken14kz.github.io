@@ -1,10 +1,13 @@
-/* Подлесок — клиентская часть. Данные приходят из build.mjs в window.GARDEN. */
+/* Подлесок — клиентская часть. Данные приходят из build.mjs в window.GARDEN.
+   Разметка здесь обязана совпадать с той, что build.mjs отдаёт заранее
+   (функции noteMarkup / railMarkup) — иначе страница дёрнется при загрузке. */
 (function(){
 'use strict';
 
 var G = window.GARDEN;
 var NOTES = G.notes;
 var BACK = G.backlinks;
+var BASE = G.base || '/';
 var byId = {};
 NOTES.forEach(function(n){ byId[n.id] = n; });
 
@@ -21,6 +24,7 @@ var searchEl = document.getElementById('search');
 var topbar   = document.getElementById('topbar');
 var mapEl    = document.getElementById('map');
 var mapBody  = document.getElementById('mapBody');
+var themeBtn = document.getElementById('themeBtn');
 
 var stack = [];
 var query = '';
@@ -33,19 +37,36 @@ function fmtDate(iso){
   return p[2] + '.' + p[1] + '.' + p[0];
 }
 
-/* ── Адрес страницы ────────────────────────────────────── */
-function readHash(){
-  var raw = '';
-  try { raw = decodeURIComponent(location.hash || ''); } catch(e){ raw = ''; }
-  var ids = raw.replace(/^#\/?/, '').split('/').filter(function(id){ return byId[id]; });
-  return ids.length ? ids : null;
+/* ── Адреса ────────────────────────────────────────────────
+   У каждой заметки свой настоящий адрес /имя/. Остальная стопка
+   живёт в ?s=, чтобы ссылкой можно было поделиться целиком. */
+function hrefFor(id){ return BASE + id + '/'; }
+
+function urlFor(st){
+  var last = st[st.length - 1];
+  var rest = st.slice(0, -1);
+  return hrefFor(last) + (rest.length ? '?s=' + rest.join(',') : '');
 }
 
-function writeHash(){
+function parseUrl(){
+  var path = location.pathname;
+  if (path === BASE || path === BASE + 'index.html') return G.entry.slice();
+
+  var id = path.slice(BASE.length).replace(/\/+$/, '');
+  if (!byId[id]) return null;
+
+  var out = [];
   try {
-    var want = '#/' + stack.join('/');
-    if (location.hash !== want) history.replaceState(null, '', want);
-  } catch(e){ /* внутри песочницы адрес менять нельзя — не страшно */ }
+    var s = new URLSearchParams(location.search).get('s');
+    if (s) s.split(',').forEach(function(x){ if (byId[x] && x !== id) out.push(x); });
+  } catch(e){ /* без URLSearchParams просто откроем одну заметку */ }
+  out.push(id);
+  return out;
+}
+
+function pushUrl(){
+  try { history.pushState({ stack: stack.slice() }, '', urlFor(stack)); }
+  catch(e){ /* в песочнице адрес менять нельзя — не страшно */ }
 }
 
 /* ── Заметка ───────────────────────────────────────────── */
@@ -63,10 +84,13 @@ function noteHTML(n, colIndex){
     '<div class="backlinks">' +
       '<h3>Ссылаются сюда · ' + bl.length + '</h3>' +
       (bl.length
-        ? bl.map(function(id){
-            var s = STAGES[byId[id].stage];
-            return '<button class="bl" data-id="' + id + '" data-col="' + colIndex + '">' +
-                   '<span class="dot ' + s.cls + '"></span>' + esc(byId[id].title) + '</button>';
+        ? bl.map(function(b){
+            var s = STAGES[byId[b.from].stage];
+            return '<a class="bl" href="' + hrefFor(b.from) + '" data-id="' + b.from + '" data-col="' + colIndex + '">' +
+                   '<span class="bl-head"><span class="dot ' + s.cls + '"></span>' +
+                   esc(byId[b.from].title) + '</span>' +
+                   (b.excerpt ? '<span class="bl-quote">' + b.excerpt + '</span>' : '') +
+                   '</a>';
           }).join('')
         : '<p class="none">Пока ниоткуда. Одинокая заметка — повод связать её с соседями.</p>') +
     '</div>' +
@@ -109,9 +133,17 @@ function renderStack(){
   }
 
   stackEl.innerHTML = html;
+  syncTitle();
   renderTopbar();
   renderRail();
-  writeHash();
+}
+
+/* Заголовок вкладки должен совпадать с тем, что отдал сервер для этого адреса. */
+function syncTitle(){
+  var atHome = location.pathname === BASE || location.pathname === BASE + 'index.html';
+  document.title = atHome
+    ? G.site
+    : byId[stack[stack.length - 1]].title + ' · ' + G.site;
 }
 
 function renderTopbar(){
@@ -136,24 +168,16 @@ function renderRail(){
         var st = STAGES[n.stage];
         var open = stack.indexOf(n.id) !== -1 ? '1' : '0';
         var bl = (BACK[n.id] || []).length;
-        return '<button class="rail-item" data-id="' + n.id + '" data-open="' + open + '">' +
+        return '<a class="rail-item" href="' + hrefFor(n.id) + '" data-id="' + n.id + '" data-open="' + open + '">' +
                  '<span class="t"><span class="dot ' + st.cls + '"></span>' +
                  '<span class="name">' + esc(n.title) + '</span></span>' +
                  '<span class="meta">' + fmtDate(n.tended) + ' · ссылок сюда: ' + bl + '</span>' +
-               '</button>';
+               '</a>';
       }).join('')
     : '<p class="empty">Ничего не выросло по этому запросу.</p>';
 }
 
-function renderFilters(){
-  filtersEl.innerHTML = Object.keys(STAGES).map(function(k){
-    return '<button class="chip" data-stage="' + k + '" aria-pressed="false">' +
-             '<span class="dot ' + STAGES[k].cls + '"></span>' + STAGES[k].label +
-           '</button>';
-  }).join('');
-}
-
-function open(id, fromCol){
+function open(id, fromCol, silent){
   if (fromCol === null || fromCol === undefined) stack = [id];
   else {
     stack = stack.slice(0, fromCol + 1);
@@ -161,9 +185,22 @@ function open(id, fromCol){
   }
   document.body.classList.remove('rail-open');
   closeMap();
+  if (!silent) pushUrl();
   renderStack();
   var cols = stackEl.querySelectorAll('.col');
   if (cols.length) cols[cols.length - 1].scrollTop = 0;
+}
+
+function truncate(i){
+  stack = stack.slice(0, i + 1);
+  pushUrl();
+  renderStack();
+}
+
+/* Обычный клик перехватываем, но cmd/ctrl/средняя кнопка открывают
+   настоящую страницу в новой вкладке — адреса для того и сделаны. */
+function plainClick(e){
+  return !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0);
 }
 
 /* ── Карта сада: пружинная раскладка ───────────────────── */
@@ -228,9 +265,7 @@ function drawMap(){
   var xs = pos.map(function(p){ return p.x; }), ys = pos.map(function(p){ return p.y; });
   var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
   var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
-  var sx = (W - HM * 2) / Math.max(1, maxX - minX);
-  var sy = (H - VM * 2) / Math.max(1, maxY - minY);
-  var s = Math.min(sx, sy);
+  var s = Math.min((W - HM * 2) / Math.max(1, maxX - minX), (H - VM * 2) / Math.max(1, maxY - minY));
   var ox = (W - (maxX - minX) * s) / 2 - minX * s;
   var oy = (H - (maxY - minY) * s) / 2 - minY * s;
   var P = pos.map(function(p){ return { x: p.x * s + ox, y: p.y * s + oy }; });
@@ -238,7 +273,7 @@ function drawMap(){
   var stroke = { seed:'var(--warm)', grow:'var(--accent)', ever:'var(--accent)' };
 
   var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Граф связей между заметками">';
-  edges.forEach(function(e, i){
+  edges.forEach(function(e){
     svg += '<line class="edge" data-edge="' + e[0] + '-' + e[1] + '" ' +
            'x1="' + P[e[0]].x.toFixed(1) + '" y1="' + P[e[0]].y.toFixed(1) + '" ' +
            'x2="' + P[e[1]].x.toFixed(1) + '" y2="' + P[e[1]].y.toFixed(1) + '"></line>';
@@ -248,11 +283,10 @@ function drawMap(){
     var r  = 5 + Math.min(bl, 6) * 1.7;
     var right = P[i].x > W / 2;
     var label = n.title.length > 22 ? n.title.slice(0, 21) + '…' : n.title;
-    var fill = n.stage === 'seed' ? 'none' : stroke[n.stage];
     var half = n.stage === 'grow';
     svg += '<g class="node" data-i="' + i + '" data-id="' + n.id + '" tabindex="0" role="button" aria-label="' + esc(n.title) + '">';
     svg += '<circle cx="' + P[i].x.toFixed(1) + '" cy="' + P[i].y.toFixed(1) + '" r="' + r.toFixed(1) +
-           '" fill="' + (half ? 'none' : fill) + '" stroke="' + stroke[n.stage] + '" stroke-width="1.6"></circle>';
+           '" fill="' + (n.stage === 'ever' ? stroke[n.stage] : 'none') + '" stroke="' + stroke[n.stage] + '" stroke-width="1.6"></circle>';
     if (half){
       svg += '<path d="M ' + P[i].x.toFixed(1) + ' ' + (P[i].y - r).toFixed(1) +
              ' A ' + r.toFixed(1) + ' ' + r.toFixed(1) + ' 0 0 1 ' +
@@ -299,27 +333,55 @@ function drawMap(){
 
 function openMap(){ drawMap(); mapEl.hidden = false; }
 function closeMap(){ mapEl.hidden = true; }
+function mapOpen(){ return !mapEl.hidden; }
+
+/* ── Тема ──────────────────────────────────────────────── */
+var THEMES = ['auto', 'light', 'dark'];
+var LABELS = { auto:'Тема', light:'Светлая', dark:'Тёмная' };
+var theme = 'auto';
+
+function applyTheme(t){
+  theme = t;
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  themeBtn.textContent = LABELS[t];
+  themeBtn.title = 'Тема: ' + (t === 'auto' ? 'как в системе' : LABELS[t].toLowerCase());
+  try { localStorage.setItem('podlesok-theme', t); } catch(e){ /* приватный режим */ }
+}
 
 /* ── События ───────────────────────────────────────────── */
 stackEl.addEventListener('click', function(e){
   var spine = e.target.closest('[data-spine]');
-  if (spine){ stack = stack.slice(0, Number(spine.dataset.spine) + 1); renderStack(); return; }
-  var bl = e.target.closest('.bl');
-  if (bl){ open(bl.dataset.id, Number(bl.dataset.col)); return; }
-  var wl = e.target.closest('.wl');
-  if (wl){ e.preventDefault(); open(wl.dataset.id, Number(wl.closest('.col').dataset.col)); }
+  if (spine){ truncate(Number(spine.dataset.spine)); return; }
+
+  var link = e.target.closest('.bl, .wl');
+  if (link && plainClick(e)){
+    e.preventDefault();
+    var col = link.closest('.col');
+    open(link.dataset.id, col ? Number(col.dataset.col) : null);
+  }
 });
 
 topbar.addEventListener('click', function(e){
   if (e.target.closest('#railBtn')){ document.body.classList.toggle('rail-open'); return; }
   if (e.target.closest('#mapBtnM')){ document.body.classList.remove('rail-open'); openMap(); return; }
   var crumb = e.target.closest('[data-spine]');
-  if (crumb){ stack = stack.slice(0, Number(crumb.dataset.spine) + 1); renderStack(); }
+  if (crumb) truncate(Number(crumb.dataset.spine));
 });
 
 railList.addEventListener('click', function(e){
   var item = e.target.closest('.rail-item');
-  if (item) open(item.dataset.id, null);
+  if (item && plainClick(e)){ e.preventDefault(); open(item.dataset.id, null); }
+});
+
+railList.addEventListener('keydown', function(e){
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  var items = [].slice.call(railList.querySelectorAll('.rail-item'));
+  var i = items.indexOf(document.activeElement);
+  if (i < 0) return;
+  e.preventDefault();
+  var next = items[i + (e.key === 'ArrowDown' ? 1 : -1)];
+  if (next) next.focus(); else if (e.key === 'ArrowUp') searchEl.focus();
 });
 
 filtersEl.addEventListener('click', function(e){
@@ -333,11 +395,53 @@ filtersEl.addEventListener('click', function(e){
 });
 
 searchEl.addEventListener('input', function(e){ query = e.target.value; renderRail(); });
+searchEl.addEventListener('keydown', function(e){
+  if (e.key === 'ArrowDown'){
+    var first = railList.querySelector('.rail-item');
+    if (first){ e.preventDefault(); first.focus(); }
+  }
+  if (e.key === 'Enter'){
+    var hit = railList.querySelector('.rail-item');
+    if (hit){ e.preventDefault(); open(hit.dataset.id, null); searchEl.blur(); }
+  }
+});
 
 document.getElementById('mapBtn').addEventListener('click', openMap);
 document.getElementById('mapClose').addEventListener('click', closeMap);
 mapEl.addEventListener('click', function(e){ if (e.target === mapEl) closeMap(); });
-document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeMap(); });
+themeBtn.addEventListener('click', function(){
+  applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]);
+});
+
+document.getElementById('homeLink').addEventListener('click', function(e){
+  if (!plainClick(e)) return;
+  e.preventDefault();
+  stack = G.entry.slice();
+  try { history.pushState({ stack: stack.slice() }, '', BASE); } catch(err){}
+  renderStack();
+});
+
+/* ── Клавиатура ────────────────────────────────────────── */
+document.addEventListener('keydown', function(e){
+  var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+
+  if (e.key === 'Escape'){
+    if (mapOpen()) closeMap();
+    else if (typing){ searchEl.value = ''; query = ''; renderRail(); searchEl.blur(); }
+    return;
+  }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+
+  if (e.key === '/'){ e.preventDefault(); searchEl.focus(); searchEl.select(); }
+  else if (e.key === 'm' || e.key === 'ь'){ mapOpen() ? closeMap() : openMap(); }
+});
+
+window.addEventListener('popstate', function(){
+  var s = parseUrl();
+  stack = s || G.entry.slice();
+  closeMap();
+  renderStack();
+});
 
 var resizeTimer;
 window.addEventListener('resize', function(){
@@ -346,7 +450,17 @@ window.addEventListener('resize', function(){
 });
 
 /* ── Старт ─────────────────────────────────────────────── */
-stack = readHash() || G.entry;
-renderFilters();
-renderStack();
+try {
+  var saved = localStorage.getItem('podlesok-theme');
+  if (saved && THEMES.indexOf(saved) !== -1) theme = saved;
+} catch(e){ /* приватный режим */ }
+applyTheme(theme);
+
+if (window.GARDEN_404){
+  /* 404 оставляем как есть: сообщение уже отрисовано, указатель рядом. */
+  renderRail();
+} else {
+  stack = parseUrl() || G.entry.slice();
+  renderStack();
+}
 })();

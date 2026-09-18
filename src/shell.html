@@ -5,19 +5,22 @@
     <div class="rail-head">
       <div class="brand-row">
         <div>
-          <h1 class="brand">{{TITLE}}</h1>
+          <h1 class="brand"><a href="{{HOME}}" id="homeLink">{{TITLE}}</a></h1>
           <p class="brand-sub">{{TAGLINE}} · {{COUNT}}</p>
         </div>
-        <button class="map-btn" id="mapBtn">Карта</button>
+        <div class="head-btns">
+          <button class="map-btn" id="themeBtn" title="Тема оформления">Тема</button>
+          <button class="map-btn" id="mapBtn" title="Карта сада (m)">Карта</button>
+        </div>
       </div>
-      <input class="search" id="search" type="search" placeholder="Найти заметку" aria-label="Поиск по заметкам">
-      <div class="filters" id="filters"></div>
+      <input class="search" id="search" type="search" placeholder="Найти заметку  /" aria-label="Поиск по заметкам">
+      <div class="filters" id="filters">{{FILTERS}}</div>
     </div>
-    <div class="rail-list" id="railList"></div>
+    <div class="rail-list" id="railList">{{RAILLIST}}</div>
     <div class="rail-foot">{{FOOT}}</div>
   </aside>
 
-  <main class="stack" id="stack"></main>
+  <main class="stack" id="stack">{{STACK}}</main>
 </div>
 
 <div class="map" id="map" hidden>
