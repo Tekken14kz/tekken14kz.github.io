@@ -76,7 +76,7 @@ function noteHTML(n, colIndex){
   return '<div class="col-inner">' +
     '<h2 class="note-title">' + esc(n.title) + '</h2>' +
     '<div class="note-meta">' +
-      '<span class="stage ' + st.cls + '"><span class="dot ' + st.cls + '"></span>' + st.label + '</span>' +
+      '<span class="stage ' + st.cls + '"><span class="mark ' + st.cls + '"></span>' + st.label + '</span>' +
       '<span class="sep">·</span><span>посажена ' + fmtDate(n.planted) + '</span>' +
       '<span class="sep">·</span><span>уход ' + fmtDate(n.tended) + '</span>' +
     '</div>' +
@@ -87,7 +87,7 @@ function noteHTML(n, colIndex){
         ? bl.map(function(b){
             var s = STAGES[byId[b.from].stage];
             return '<a class="bl" href="' + hrefFor(b.from) + '" data-id="' + b.from + '" data-col="' + colIndex + '">' +
-                   '<span class="bl-head"><span class="dot ' + s.cls + '"></span>' +
+                   '<span class="bl-head"><span class="mark ' + s.cls + '"></span>' +
                    esc(byId[b.from].title) + '</span>' +
                    (b.excerpt ? '<span class="bl-quote">' + b.excerpt + '</span>' : '') +
                    '</a>';
@@ -118,7 +118,7 @@ function renderStack(){
     if (i < firstExpanded){
       var st = STAGES[n.stage];
       html += '<button class="spine" data-spine="' + i + '" title="' + esc(n.title) + '">' +
-                '<span class="dot ' + st.cls + '"></span>' +
+                '<span class="mark ' + st.cls + '"></span>' +
                 '<span class="label">' + esc(n.title) + '</span>' +
               '</button>';
     } else {
@@ -169,7 +169,7 @@ function renderRail(){
         var open = stack.indexOf(n.id) !== -1 ? '1' : '0';
         var bl = (BACK[n.id] || []).length;
         return '<a class="rail-item" href="' + hrefFor(n.id) + '" data-id="' + n.id + '" data-open="' + open + '">' +
-                 '<span class="t"><span class="dot ' + st.cls + '"></span>' +
+                 '<span class="t"><span class="mark ' + st.cls + '"></span>' +
                  '<span class="name">' + esc(n.title) + '</span></span>' +
                  '<span class="meta">' + fmtDate(n.tended) + ' · ссылок сюда: ' + bl + '</span>' +
                '</a>';
@@ -271,6 +271,8 @@ function drawMap(){
   var P = pos.map(function(p){ return { x: p.x * s + ox, y: p.y * s + oy }; });
 
   var stroke = { seed:'var(--warm)', grow:'var(--accent)', ever:'var(--accent)' };
+  /* Та же шкала, что и у штрихов: пунктир -> штрих -> сплошная с заливкой. */
+  var DASH = { seed:' stroke-dasharray="1.5 2.5"', grow:' stroke-dasharray="5 3"', ever:'' };
 
   var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Граф связей между заметками">';
   edges.forEach(function(e){
@@ -283,15 +285,10 @@ function drawMap(){
     var r  = 5 + Math.min(bl, 6) * 1.7;
     var right = P[i].x > W / 2;
     var label = n.title.length > 22 ? n.title.slice(0, 21) + '…' : n.title;
-    var half = n.stage === 'grow';
     svg += '<g class="node" data-i="' + i + '" data-id="' + n.id + '" tabindex="0" role="button" aria-label="' + esc(n.title) + '">';
     svg += '<circle cx="' + P[i].x.toFixed(1) + '" cy="' + P[i].y.toFixed(1) + '" r="' + r.toFixed(1) +
-           '" fill="' + (n.stage === 'ever' ? stroke[n.stage] : 'none') + '" stroke="' + stroke[n.stage] + '" stroke-width="1.6"></circle>';
-    if (half){
-      svg += '<path d="M ' + P[i].x.toFixed(1) + ' ' + (P[i].y - r).toFixed(1) +
-             ' A ' + r.toFixed(1) + ' ' + r.toFixed(1) + ' 0 0 1 ' +
-             P[i].x.toFixed(1) + ' ' + (P[i].y + r).toFixed(1) + ' Z" fill="' + stroke[n.stage] + '"></path>';
-    }
+           '" fill="' + (n.stage === 'ever' ? stroke[n.stage] : 'none') +
+           '" stroke="' + stroke[n.stage] + '" stroke-width="1.6"' + DASH[n.stage] + '></circle>';
     svg += '<text x="' + (P[i].x + (right ? -(r + 6) : (r + 6))).toFixed(1) + '" y="' + (P[i].y + 3.4).toFixed(1) +
            '" text-anchor="' + (right ? 'end' : 'start') + '">' + esc(label) + '</text>';
     svg += '</g>';

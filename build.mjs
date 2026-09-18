@@ -90,9 +90,8 @@ function inline(raw, from, links){
       return label || target;
     }
     if (links) links.add(id);
-    return '<a class="wl" href="' + href(id) + '" data-id="' + id + '">' +
-           (label || esc(byId[id].title)) +
-           '<span class="dot wl-stage s-' + byId[id].stage + '"></span></a>';
+    return '<a class="wl s-' + byId[id].stage + '" href="' + href(id) + '" data-id="' + id + '">' +
+           (label || esc(byId[id].title)) + '</a>';
   });
 
   s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
@@ -192,7 +191,7 @@ function noteMarkup(n){
   return '<article class="col" data-col="0"><div class="col-inner">' +
     '<h2 class="note-title">' + esc(n.title) + '</h2>' +
     '<div class="note-meta">' +
-      '<span class="stage s-' + n.stage + '"><span class="dot s-' + n.stage + '"></span>' + STAGES[n.stage] + '</span>' +
+      '<span class="stage s-' + n.stage + '"><span class="mark s-' + n.stage + '"></span>' + STAGES[n.stage] + '</span>' +
       '<span class="sep">·</span><span>посажена ' + fmtDate(n.planted) + '</span>' +
       '<span class="sep">·</span><span>уход ' + fmtDate(n.tended) + '</span>' +
     '</div>' +
@@ -200,7 +199,7 @@ function noteMarkup(n){
     '<div class="backlinks"><h3>Ссылаются сюда · ' + bl.length + '</h3>' +
     (bl.length
       ? bl.map(b => '<a class="bl" href="' + href(b.from) + '" data-id="' + b.from + '" data-col="0">' +
-          '<span class="bl-head"><span class="dot s-' + byId[b.from].stage + '"></span>' +
+          '<span class="bl-head"><span class="mark s-' + byId[b.from].stage + '"></span>' +
           esc(byId[b.from].title) + '</span>' +
           (b.excerpt ? '<span class="bl-quote">' + b.excerpt + '</span>' : '') + '</a>').join('')
       : '<p class="none">Пока ниоткуда. Одинокая заметка — повод связать её с соседями.</p>') +
@@ -211,7 +210,7 @@ function railMarkup(openIds){
   return byTended.map(n =>
     '<a class="rail-item" href="' + href(n.id) + '" data-id="' + n.id + '" data-open="' +
     (openIds.includes(n.id) ? '1' : '0') + '">' +
-    '<span class="t"><span class="dot s-' + n.stage + '"></span>' +
+    '<span class="t"><span class="mark s-' + n.stage + '"></span>' +
     '<span class="name">' + esc(n.title) + '</span></span>' +
     '<span class="meta">' + fmtDate(n.tended) + ' · ссылок сюда: ' +
     ((backlinks[n.id] || []).length) + '</span></a>').join('');
@@ -219,7 +218,7 @@ function railMarkup(openIds){
 
 const FILTERS = Object.keys(STAGES).map(k =>
   '<button class="chip" data-stage="' + k + '" aria-pressed="false">' +
-  '<span class="dot s-' + k + '"></span>' + STAGES[k] + '</button>').join('');
+  '<span class="mark s-' + k + '"></span>' + STAGES[k] + '</button>').join('');
 
 const shellTpl = readFileSync(join(ROOT, 'src/shell.html'), 'utf8');
 
@@ -251,7 +250,7 @@ const THEME_BOOT = '<script>try{var t=localStorage.getItem("podlesok-theme");' +
 
 const FONTS =
   '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n' +
-  '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">';
+  '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">';
 
 const FAVICON = 'data:image/svg+xml,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">' +

@@ -12,7 +12,7 @@
   --accent-soft:rgba(42,79,168,.11);
   --warm:#a8681f;
   --shadow:0 1px 2px rgba(20,23,28,.05), 0 8px 24px -16px rgba(20,23,28,.3);
-  --serif:'Literata', Georgia, 'Times New Roman', serif;
+  --serif:'Spectral', Georgia, 'Times New Roman', serif;
   --sans:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono:'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
   /* Скругление осталось только там, где элемент действительно вводится
@@ -99,10 +99,10 @@ body{
 .search:focus{border-bottom-color:var(--accent)}
 .search::-webkit-search-cancel-button{filter:grayscale(1) opacity(.5)}
 
-/* Фильтры — текст, а не пилюли. Стадия читается словом и заливкой кружка. */
-.filters{display:flex; align-items:baseline; gap:14px; margin-top:12px}
+/* Фильтры — текст, а не пилюли: слово и штрих стадии. */
+.filters{display:flex; align-items:center; gap:14px; margin-top:12px}
 .chip{
-  display:inline-flex; align-items:baseline; gap:6px;
+  display:inline-flex; align-items:center; gap:7px;
   padding:0; border:0; border-radius:0; background:transparent;
   font-family:var(--mono); font-size:10.5px; line-height:1.4;
   color:var(--muted); cursor:pointer;
@@ -123,10 +123,10 @@ body{
 }
 .rail-item:hover{background:var(--panel)}
 .rail-item[data-open="1"]{background:var(--panel); border-left-color:var(--accent); color:var(--ink)}
-.rail-item .t{display:flex; align-items:baseline; gap:7px}
+.rail-item .t{display:flex; align-items:center; gap:8px}
 .rail-item .name{font-size:13.5px; line-height:1.35}
 .rail-item .meta{
-  display:block; margin-top:1px; padding-left:15px;
+  display:block; margin-top:1px; padding-left:23px;
   font-family:var(--mono); font-size:10px; color:var(--muted);
   font-variant-numeric:tabular-nums;
 }
@@ -153,18 +153,20 @@ body{
 }
 .rail-foot code{font-family:var(--mono); font-size:10.5px; color:var(--ink-2)}
 
-/* ── Индикатор стадии ───────────────────────────────────── */
-.dot{
-  flex:0 0 auto; position:relative;
-  width:8px; height:8px; border-radius:50%;
-  border:1.5px solid currentColor; transform:translateY(-1px);
+/* ── Индикатор стадии ─────────────────────────────────────
+   Зрелость показана сплошностью линии: пунктир → штрих → сплошная.
+   Чем больше краски, тем заметка взрослее. Один приём на весь
+   интерфейс — вплоть до подчёркивания ссылки и узла на карте. */
+.mark{
+  flex:0 0 auto; display:inline-block;
+  width:15px; height:2px;
+  vertical-align:middle;
 }
 .s-seed{color:var(--warm)}
 .s-grow,.s-ever{color:var(--accent)}
-.s-grow.dot::after,.s-ever.dot::after{
-  content:''; position:absolute; inset:0; border-radius:50%; background:currentColor;
-}
-.s-grow.dot::after{clip-path:inset(0 50% 0 0)}
+.mark.s-seed{background:repeating-linear-gradient(90deg,currentColor 0 2px,transparent 2px 5px)}
+.mark.s-grow{background:repeating-linear-gradient(90deg,currentColor 0 5px,transparent 5px 8px)}
+.mark.s-ever{background:currentColor}
 
 /* ── Стопка столбцов ────────────────────────────────────── */
 .stack{flex:1 1 auto; display:flex; align-items:stretch; min-width:0; overflow:hidden}
@@ -178,6 +180,7 @@ body{
   color:var(--ink-2); font:inherit; cursor:pointer;
 }
 .spine:hover{background:var(--panel); color:var(--ink)}
+.spine .mark{transform:rotate(90deg)}
 .spine .label{
   writing-mode:vertical-rl; transform:rotate(180deg);
   font-family:var(--serif); font-size:13px;
@@ -209,13 +212,13 @@ body{
 /* Стадия и даты — одна тихая строка под заголовком, а не капслочный
    ярлык сверху плюс вторая строка снизу. */
 .note-meta{
-  display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 9px;
+  display:flex; flex-wrap:wrap; align-items:center; gap:4px 9px;
   margin:10px 0 24px; padding-bottom:20px;
   border-bottom:1px solid var(--rule);
   font-family:var(--mono); font-size:10.5px; color:var(--muted);
   font-variant-numeric:tabular-nums;
 }
-.note-meta .stage{display:inline-flex; align-items:baseline; gap:6px}
+.note-meta .stage{display:inline-flex; align-items:center; gap:7px}
 .note-meta .sep{color:var(--rule)}
 
 .body{max-width:62ch; color:var(--ink-2); font-size:14.5px}
@@ -241,14 +244,18 @@ body{
 }
 .body a[href^="http"]{color:var(--accent)}
 
+/* Стадию того, что на другом конце, несёт само подчёркивание ссылки —
+   значка после текста больше нет. */
 .wl{
-  color:var(--accent); text-decoration:none;
-  box-shadow:inset 0 -1px 0 var(--accent-soft);
-  padding:0 1px;
+  color:var(--accent); padding:0 1px;
+  text-decoration:underline;
+  text-decoration-thickness:1px;
+  text-underline-offset:3px;
 }
-.wl:hover{background:var(--accent-soft); box-shadow:inset 0 -1px 0 var(--accent)}
-/* Стадия того, что на другом конце ссылки — та же шкала, что и везде. */
-.wl-stage{display:inline-block; width:7px; height:7px; margin-left:5px}
+.wl.s-seed{text-decoration-style:dotted; text-decoration-color:var(--warm)}
+.wl.s-grow{text-decoration-style:dashed; text-decoration-color:var(--accent)}
+.wl.s-ever{text-decoration-style:solid;  text-decoration-color:var(--accent)}
+.wl:hover{background:var(--accent-soft)}
 
 .backlinks{margin-top:38px; padding-top:18px; border-top:1px solid var(--rule)}
 .backlinks h3{
@@ -265,10 +272,10 @@ body{
   font:inherit; font-size:13.5px; text-decoration:none; cursor:pointer;
 }
 .bl:hover{background:var(--panel-2); border-left-color:var(--rule); color:var(--ink)}
-.bl-head{display:flex; align-items:baseline; gap:7px}
+.bl-head{display:flex; align-items:center; gap:8px}
 /* Предложение, в котором стоит ссылка: видно не «кто-то сослался», а зачем. */
 .bl-quote{
-  display:block; margin-top:4px; padding-left:15px;
+  display:block; margin-top:4px; padding-left:23px;
   font-family:var(--serif); font-size:12.5px; line-height:1.5; color:var(--muted);
 }
 .bl-quote mark{background:transparent; color:var(--accent); font-style:italic}
@@ -315,7 +322,7 @@ body{
   padding:12px 20px 14px; border-top:1px solid var(--rule);
   font-family:var(--mono); font-size:10.5px; color:var(--muted);
 }
-.map-legend span{display:inline-flex; align-items:baseline; gap:6px}
+.map-legend span{display:inline-flex; align-items:center; gap:7px}
 
 /* ── Мобильная шапка ────────────────────────────────────── */
 .topbar{display:none}
