@@ -74,11 +74,11 @@ function noteHTML(n, colIndex){
   var st = STAGES[n.stage];
   var bl = BACK[n.id] || [];
   return '<div class="col-inner">' +
-    '<span class="note-stage ' + st.cls + '"><span class="dot ' + st.cls + '"></span>' + st.label + '</span>' +
     '<h2 class="note-title">' + esc(n.title) + '</h2>' +
-    '<div class="note-dates">' +
-      '<span>посажена ' + fmtDate(n.planted) + '</span>' +
-      '<span>последний уход ' + fmtDate(n.tended) + '</span>' +
+    '<div class="note-meta">' +
+      '<span class="stage ' + st.cls + '"><span class="dot ' + st.cls + '"></span>' + st.label + '</span>' +
+      '<span class="sep">·</span><span>посажена ' + fmtDate(n.planted) + '</span>' +
+      '<span class="sep">·</span><span>уход ' + fmtDate(n.tended) + '</span>' +
     '</div>' +
     '<div class="body">' + n.html + '</div>' +
     '<div class="backlinks">' +
@@ -337,15 +337,14 @@ function mapOpen(){ return !mapEl.hidden; }
 
 /* ── Тема ──────────────────────────────────────────────── */
 var THEMES = ['auto', 'light', 'dark'];
-var LABELS = { auto:'Тема', light:'Светлая', dark:'Тёмная' };
+var LABELS = { auto:'как в системе', light:'светлая', dark:'тёмная' };
 var theme = 'auto';
 
 function applyTheme(t){
   theme = t;
   if (t === 'auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t);
-  themeBtn.textContent = LABELS[t];
-  themeBtn.title = 'Тема: ' + (t === 'auto' ? 'как в системе' : LABELS[t].toLowerCase());
+  themeBtn.innerHTML = 'Тема: <span class="val">' + LABELS[t] + '</span>';
   try { localStorage.setItem('podlesok-theme', t); } catch(e){ /* приватный режим */ }
 }
 

@@ -3,20 +3,18 @@
 
   <aside class="rail" id="rail">
     <div class="rail-head">
-      <div class="brand-row">
-        <div>
-          <h1 class="brand"><a href="{{HOME}}" id="homeLink">{{TITLE}}</a></h1>
-          <p class="brand-sub">{{TAGLINE}} · {{COUNT}}</p>
-        </div>
-        <div class="head-btns">
-          <button class="map-btn" id="themeBtn" title="Тема оформления">Тема</button>
-          <button class="map-btn" id="mapBtn" title="Карта сада (m)">Карта</button>
-        </div>
-      </div>
+      <p class="brand-count">{{COUNT}}</p>
+      <h1 class="brand"><a href="{{HOME}}" id="homeLink">{{TITLE}}</a></h1>
       <input class="search" id="search" type="search" placeholder="Найти заметку  /" aria-label="Поиск по заметкам">
       <div class="filters" id="filters">{{FILTERS}}</div>
     </div>
+
     <div class="rail-list" id="railList">{{RAILLIST}}</div>
+
+    <div class="rail-controls">
+      <button class="txt-btn" id="mapBtn" title="Карта сада (m)">Карта сада</button>
+      <button class="txt-btn" id="themeBtn">Тема: <span class="val">как в системе</span></button>
+    </div>
     <div class="rail-foot">{{FOOT}}</div>
   </aside>
 
@@ -28,14 +26,14 @@
     <div class="map-head">
       <h2>Карта сада</h2>
       <span class="map-hint">размер — сколько ссылок ведёт сюда</span>
-      <button class="map-close" id="mapClose">Esc</button>
+      <button class="txt-btn" id="mapClose">Закрыть</button>
     </div>
     <div class="map-body" id="mapBody"></div>
     <div class="map-legend">
       <span><span class="dot s-seed"></span>росток</span>
       <span><span class="dot s-grow"></span>растёт</span>
       <span><span class="dot s-ever"></span>вечнозелёная</span>
-      <span>наведи на узел — подсветятся соседи · клик открывает заметку</span>
+      <span>наведи на узел — подсветятся соседи, клик открывает заметку</span>
     </div>
   </div>
 </div>

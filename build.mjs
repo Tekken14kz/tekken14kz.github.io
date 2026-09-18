@@ -20,13 +20,12 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
 /* ── Настройки сада ──────────────────────────────────────── */
 const SITE = {
   title:   'Подлесок',
-  tagline: 'сад заметок',
   description: 'Личный сад заметок: связанные тексты, которые растут и переписываются, вместо ленты постов.',
   lang:    'ru',
   url:     'https://tekken14kz.github.io',  // без слэша на конце
   base:    '/',                              // подпапка, если сайт не в корне домена
   entry:   ['start', 'sad'],                 // что открыто при заходе на главную
-  foot:    'Заметки живут в папке <code>notes/</code>. Ссылки <code>[[имя]]</code> в тексте открывают следующий столбец, обратные ссылки и карта считаются при сборке.'
+  foot:    'Шаблон сада: заметки лежат в <code>notes/</code>, связи и карта считаются при сборке.'
 };
 
 const STAGES = { seed:'росток', grow:'растёт', ever:'вечнозелёная' };
@@ -191,10 +190,12 @@ const fmtDate = iso => { const p = iso.split('-'); return p[2] + '.' + p[1] + '.
 function noteMarkup(n){
   const bl = backlinks[n.id] || [];
   return '<article class="col" data-col="0"><div class="col-inner">' +
-    '<span class="note-stage s-' + n.stage + '"><span class="dot s-' + n.stage + '"></span>' + STAGES[n.stage] + '</span>' +
     '<h2 class="note-title">' + esc(n.title) + '</h2>' +
-    '<div class="note-dates"><span>посажена ' + fmtDate(n.planted) + '</span>' +
-    '<span>последний уход ' + fmtDate(n.tended) + '</span></div>' +
+    '<div class="note-meta">' +
+      '<span class="stage s-' + n.stage + '"><span class="dot s-' + n.stage + '"></span>' + STAGES[n.stage] + '</span>' +
+      '<span class="sep">·</span><span>посажена ' + fmtDate(n.planted) + '</span>' +
+      '<span class="sep">·</span><span>уход ' + fmtDate(n.tended) + '</span>' +
+    '</div>' +
     '<div class="body">' + n.html + '</div>' +
     '<div class="backlinks"><h3>Ссылаются сюда · ' + bl.length + '</h3>' +
     (bl.length
@@ -226,8 +227,7 @@ function shell(stackHTML, openIds){
   return shellTpl
     .replace('{{TITLE}}', esc(SITE.title))
     .replace('{{HOME}}', SITE.base)
-    .replace('{{TAGLINE}}', esc(SITE.tagline))
-    .replace('{{COUNT}}', plural(notes.length, 'растение', 'растения', 'растений'))
+    .replace('{{COUNT}}', plural(notes.length, 'заметка', 'заметки', 'заметок'))
     .replace('{{FILTERS}}', FILTERS)
     .replace('{{RAILLIST}}', railMarkup(openIds))
     .replace('{{STACK}}', stackHTML)
