@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "podlesok",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["build.mjs", "--serve"],
+      "port": 4321
+    }
+  ]
+}

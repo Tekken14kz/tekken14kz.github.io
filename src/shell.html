@@ -1,0 +1,38 @@
+<div class="app">
+  <div class="topbar" id="topbar"></div>
+
+  <aside class="rail" id="rail">
+    <div class="rail-head">
+      <div class="brand-row">
+        <div>
+          <h1 class="brand">{{TITLE}}</h1>
+          <p class="brand-sub">{{TAGLINE}} · {{COUNT}}</p>
+        </div>
+        <button class="map-btn" id="mapBtn">Карта</button>
+      </div>
+      <input class="search" id="search" type="search" placeholder="Найти заметку" aria-label="Поиск по заметкам">
+      <div class="filters" id="filters"></div>
+    </div>
+    <div class="rail-list" id="railList"></div>
+    <div class="rail-foot">{{FOOT}}</div>
+  </aside>
+
+  <main class="stack" id="stack"></main>
+</div>
+
+<div class="map" id="map" hidden>
+  <div class="map-panel" role="dialog" aria-modal="true" aria-label="Карта сада">
+    <div class="map-head">
+      <h2>Карта сада</h2>
+      <span class="map-hint">размер — сколько ссылок ведёт сюда</span>
+      <button class="map-close" id="mapClose">Esc</button>
+    </div>
+    <div class="map-body" id="mapBody"></div>
+    <div class="map-legend">
+      <span><span class="dot s-seed"></span>росток</span>
+      <span><span class="dot s-grow"></span>растёт</span>
+      <span><span class="dot s-ever"></span>вечнозелёная</span>
+      <span>наведи на узел — подсветятся соседи · клик открывает заметку</span>
+    </div>
+  </div>
+</div>
