@@ -134,24 +134,21 @@ body{
 
 /* Управление — текстом в тонкой полосе, как в бумажном колонтитуле. */
 .rail-controls{
-  display:flex; gap:16px;
-  padding:11px 20px;
+  display:flex; flex-direction:column; align-items:flex-start; gap:7px;
+  padding:12px 20px 16px;
   border-top:1px solid var(--rule);
   font-family:var(--mono); font-size:11px;
 }
+.rail-links{display:flex; flex-wrap:wrap; gap:16px}
 .txt-btn{
   padding:0; border:0; background:transparent;
   font:inherit; color:var(--ink-2); cursor:pointer;
+  text-decoration:none;   /* ссылка и кнопка в одной строке должны выглядеть одинаково */
 }
 .txt-btn:hover{color:var(--accent); box-shadow:inset 0 -1px 0 var(--accent)}
 .txt-btn .val{color:var(--muted)}
 
-.rail-foot{
-  padding:11px 20px 16px;
-  border-top:1px solid var(--rule-soft);
-  font-size:11px; line-height:1.5; color:var(--muted);
-}
-.rail-foot code{font-family:var(--mono); font-size:10.5px; color:var(--ink-2)}
+
 
 /* ── Индикатор стадии ─────────────────────────────────────
    Зрелость показана сплошностью линии: пунктир → штрих → сплошная.
@@ -255,6 +252,7 @@ body{
 .wl.s-seed{text-decoration-style:dotted; text-decoration-color:var(--warm)}
 .wl.s-grow{text-decoration-style:dashed; text-decoration-color:var(--accent)}
 .wl.s-ever{text-decoration-style:solid;  text-decoration-color:var(--accent)}
+.wl-page{text-decoration-style:solid; text-decoration-color:var(--muted)}
 .wl:hover{background:var(--accent-soft)}
 
 .backlinks{margin-top:38px; padding-top:18px; border-top:1px solid var(--rule)}

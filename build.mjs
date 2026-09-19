@@ -24,8 +24,7 @@ const SITE = {
   lang:    'ru',
   url:     'https://tekken14kz.github.io',  // без слэша на конце
   base:    '/',                              // подпапка, если сайт не в корне домена
-  entry:   ['start', 'sad'],                 // что открыто при заходе на главную
-  foot:    'Шаблон сада: заметки лежат в <code>notes/</code>, связи и карта считаются при сборке.'
+  entry:   ['start', 'sad']                  // что открыто при заходе на главную
 };
 
 const STAGES = { seed:'росток', grow:'растёт', ever:'вечнозелёная' };
@@ -60,13 +59,26 @@ const notes = files.map(file => {
   return { id, title: meta.title, stage: meta.stage, planted: meta.planted, tended: meta.tended, raw: body };
 });
 
-const byId = Object.fromEntries(notes.map(n => [n.id, n]));
+/* Страницы — служебное содержимое рядом с заметками: «о саде», FAQ и прочее.
+   У них нет стадии и они не участвуют в графе, но адрес и вёрстка те же. */
+const pages = (existsSync(join(ROOT, 'pages'))
+  ? readdirSync(join(ROOT, 'pages')).filter(f => f.endsWith('.md')).sort()
+  : []).map(file => {
+    const id = file.replace(/\.md$/, '');
+    const { meta, body } = frontmatter(readFileSync(join(ROOT, 'pages', file), 'utf8'), file);
+    if (!meta.title) throw new Error(file + ': не хватает поля "title"');
+    return { id, title: meta.title, nav: meta.nav || meta.title,
+             updated: meta.updated || '', raw: body, isPage: true };
+  });
+
+const noteIds = new Set(notes.map(n => n.id));
+const byId = Object.fromEntries([...notes, ...pages].map(n => [n.id, n]));
 
 /* Ссылку можно писать и по имени файла, и по заголовку — как в Obsidian.
    Экранированный вариант заголовка тоже кладём в указатель: к моменту
    разбора ссылок текст уже прошёл через esc(). */
 const index = {};
-notes.forEach(n => {
+[...notes, ...pages].forEach(n => {
   index[n.id.toLowerCase()] = n.id;
   index[n.title.toLowerCase().trim()] = n.id;
   index[esc(n.title).toLowerCase().trim()] = n.id;
@@ -90,7 +102,8 @@ function inline(raw, from, links){
       return label || target;
     }
     if (links) links.add(id);
-    return '<a class="wl s-' + byId[id].stage + '" href="' + href(id) + '" data-id="' + id + '">' +
+    const cls = byId[id].isPage ? 'wl wl-page' : 'wl s-' + byId[id].stage;
+    return '<a class="' + cls + '" href="' + href(id) + '" data-id="' + id + '">' +
            (label || esc(byId[id].title)) + '</a>';
   });
 
@@ -160,8 +173,16 @@ function excerpt(raw, targetId){
 notes.forEach(n => {
   const links = new Set();
   n.html = markdown(n.raw, n.id, links);
-  n.links = [...links].filter(id => id !== n.id);
+  n.links = [...links].filter(id => id !== n.id && noteIds.has(id));
   n.text = n.raw.replace(WIKI, (_, t, l) => l || t).replace(/[*`>#\-\[\]]/g, '').replace(/\s+/g, ' ').trim();
+});
+
+/* Страницы рендерим тем же markdown: ссылки на заметки в них работают,
+   но связей в граф не добавляют — граф остаётся про заметки. */
+pages.forEach(p => {
+  p.html = markdown(p.raw, p.id, null);
+  p.text = p.raw.replace(WIKI, (_, t, l) => l || t)
+                .replace(/[*`>#\-\[\]]/g, '').replace(/\s+/g, ' ').trim();
 });
 
 const backlinks = {};
@@ -206,6 +227,17 @@ function noteMarkup(n){
     '</div></div></article>';
 }
 
+function pageMarkup(p){
+  return '<article class="col" data-col="0"><div class="col-inner">' +
+    '<h2 class="note-title">' + esc(p.title) + '</h2>' +
+    (p.updated
+      ? '<div class="note-meta"><span>страница</span><span class="sep">·</span>' +
+        '<span>обновлена ' + fmtDate(p.updated) + '</span></div>'
+      : '<div class="note-meta"><span>страница</span></div>') +
+    '<div class="body">' + p.html + '</div>' +
+  '</div></article>';
+}
+
 function railMarkup(openIds){
   return byTended.map(n =>
     '<a class="rail-item" href="' + href(n.id) + '" data-id="' + n.id + '" data-open="' +
@@ -220,6 +252,10 @@ const FILTERS = Object.keys(STAGES).map(k =>
   '<button class="chip" data-stage="' + k + '" aria-pressed="false">' +
   '<span class="mark s-' + k + '"></span>' + STAGES[k] + '</button>').join('');
 
+const PAGELINKS = pages.map(p =>
+  '<a class="txt-btn page-link" href="' + href(p.id) + '" data-id="' + p.id + '">' +
+  esc(p.nav) + '</a>').join('');
+
 const shellTpl = readFileSync(join(ROOT, 'src/shell.html'), 'utf8');
 
 function shell(stackHTML, openIds){
@@ -228,9 +264,9 @@ function shell(stackHTML, openIds){
     .replace('{{HOME}}', SITE.base)
     .replace('{{COUNT}}', plural(notes.length, 'заметка', 'заметки', 'заметок'))
     .replace('{{FILTERS}}', FILTERS)
+    .replace('{{PAGELINKS}}', PAGELINKS)
     .replace('{{RAILLIST}}', railMarkup(openIds))
-    .replace('{{STACK}}', stackHTML)
-    .replace('{{FOOT}}', SITE.foot);
+    .replace('{{STACK}}', stackHTML);
 }
 
 /* ── Страницы ────────────────────────────────────────────── */
@@ -241,6 +277,8 @@ const DATA = '<script>window.GARDEN=' +
   JSON.stringify({
     notes: notes.map(n => ({ id:n.id, title:n.title, stage:n.stage, planted:n.planted,
                              tended:n.tended, html:n.html, text:n.text, links:n.links })),
+    pages: pages.map(p => ({ id:p.id, title:p.title, nav:p.nav, updated:p.updated,
+                             html:p.html, isPage:true })),
     backlinks, entry, base: SITE.base, site: SITE.title
   }).replace(/</g, '\\u003c') + ';</script>';
 
@@ -300,6 +338,16 @@ writeFileSync(join(dist, 'index.html'), page({
   body: shell(noteMarkup(byId[entry[0]]), entry)
 }));
 
+pages.forEach(p => {
+  mkdirSync(join(dist, p.id), { recursive: true });
+  writeFileSync(join(dist, p.id, 'index.html'), page({
+    title: p.title + ' · ' + SITE.title,
+    description: p.text.slice(0, 155),
+    path: href(p.id),
+    body: shell(pageMarkup(p), [])
+  }));
+});
+
 /* По странице на заметку — свой адрес, свой заголовок, готовый HTML. */
 notes.forEach(n => {
   mkdirSync(join(dist, n.id), { recursive: true });
@@ -357,6 +405,7 @@ writeFileSync(join(dist, 'sitemap.xml'),
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>${abs(SITE.base)}</loc><lastmod>${byTended[0].tended}</lastmod></url>
 ${notes.map(n => `  <url><loc>${abs(href(n.id))}</loc><lastmod>${n.tended}</lastmod></url>`).join('\n')}
+${pages.map(p => `  <url><loc>${abs(href(p.id))}</loc>${p.updated ? `<lastmod>${p.updated}</lastmod>` : ''}</url>`).join('\n')}
 </urlset>
 `);
 
@@ -389,8 +438,9 @@ const withCtx = Object.values(backlinks).flat().filter(b => b.excerpt).length;
 const total = Object.values(backlinks).flat().length;
 const orphans = notes.filter(n => !n.links.length && !(backlinks[n.id] || []).length);
 
-console.log('готово: ' + notes.length + ' заметок, ' + edges + ' связей, ' +
-            (notes.length + 3) + ' страниц -> dist/');
+console.log('готово: ' + plural(notes.length, 'заметка', 'заметки', 'заметок') + ', ' +
+            plural(pages.length, 'страница', 'страницы', 'страниц') + ', ' +
+            plural(edges, 'связь', 'связи', 'связей') + ' -> dist/');
 console.log('контекст у обратных ссылок: ' + withCtx + ' из ' + total);
 if (broken.length)  console.log('! битые ссылки: ' + broken.join(', '));
 if (orphans.length) console.log('! ни с чем не связаны: ' + orphans.map(n => n.id).join(', '));

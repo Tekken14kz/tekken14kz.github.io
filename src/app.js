@@ -7,9 +7,12 @@
 var G = window.GARDEN;
 var NOTES = G.notes;
 var BACK = G.backlinks;
+var PAGES = G.pages || [];
 var BASE = G.base || '/';
+/* Страницы лежат в том же указателе, что и заметки: у них есть адрес и они
+   открываются столбцом — но в список, карту и граф не попадают. */
 var byId = {};
-NOTES.forEach(function(n){ byId[n.id] = n; });
+NOTES.concat(PAGES).forEach(function(n){ byId[n.id] = n; });
 
 var STAGES = {
   seed:{label:'росток',       cls:'s-seed'},
@@ -70,7 +73,18 @@ function pushUrl(){
 }
 
 /* ── Заметка ───────────────────────────────────────────── */
+function pageHTML(p){
+  return '<div class="col-inner">' +
+    '<h2 class="note-title">' + esc(p.title) + '</h2>' +
+    '<div class="note-meta"><span>страница</span>' +
+      (p.updated ? '<span class="sep">·</span><span>обновлена ' + fmtDate(p.updated) + '</span>' : '') +
+    '</div>' +
+    '<div class="body">' + p.html + '</div>' +
+  '</div>';
+}
+
 function noteHTML(n, colIndex){
+  if (n.isPage) return pageHTML(n);
   var st = STAGES[n.stage];
   var bl = BACK[n.id] || [];
   return '<div class="col-inner">' +
@@ -118,7 +132,7 @@ function renderStack(){
     if (i < firstExpanded){
       var st = STAGES[n.stage];
       html += '<button class="spine" data-spine="' + i + '" title="' + esc(n.title) + '">' +
-                '<span class="mark ' + st.cls + '"></span>' +
+                (st ? '<span class="mark ' + st.cls + '"></span>' : '') +
                 '<span class="label">' + esc(n.title) + '</span>' +
               '</button>';
     } else {
@@ -400,6 +414,11 @@ searchEl.addEventListener('keydown', function(e){
     var hit = railList.querySelector('.rail-item');
     if (hit){ e.preventDefault(); open(hit.dataset.id, null); searchEl.blur(); }
   }
+});
+
+document.querySelector('.rail-controls').addEventListener('click', function(e){
+  var link = e.target.closest('.page-link');
+  if (link && plainClick(e)){ e.preventDefault(); open(link.dataset.id, null); }
 });
 
 document.getElementById('mapBtn').addEventListener('click', openMap);
