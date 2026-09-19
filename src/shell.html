@@ -26,15 +26,19 @@
   <div class="map-panel" role="dialog" aria-modal="true" aria-label="Карта сада">
     <div class="map-head">
       <h2>Карта сада</h2>
-      <span class="map-hint">размер — сколько ссылок ведёт сюда</span>
-      <button class="txt-btn" id="mapClose">Закрыть</button>
+      <span class="map-hint">размер узла — сколько ссылок ведёт сюда</span>
+      <div class="map-acts">
+        <button class="txt-btn" id="mapShuffle">Перемешать</button>
+        <button class="txt-btn" id="mapReset">Сбросить вид</button>
+        <button class="txt-btn" id="mapClose">Закрыть</button>
+      </div>
     </div>
     <div class="map-body" id="mapBody"></div>
     <div class="map-legend">
       <span><span class="mark s-seed"></span>росток</span>
       <span><span class="mark s-grow"></span>растёт</span>
       <span><span class="mark s-ever"></span>вечнозелёная</span>
-      <span>наведи на узел — подсветятся соседи, клик открывает заметку</span>
+      <span>тащи узел или фон, колесо и щипок — масштаб, двойной клик — сброс</span>
     </div>
   </div>
 </div>

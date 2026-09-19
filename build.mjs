@@ -433,6 +433,12 @@ ${js}
 `);
 
 /* ── Итог ────────────────────────────────────────────────── */
+/* inbox/ — карантин для надиктованного и пойманного на бегу.
+   В сборку не попадает: это и есть предварительная модерация. */
+const inbox = existsSync(join(ROOT, 'inbox'))
+  ? readdirSync(join(ROOT, 'inbox')).filter(f => f.endsWith('.md'))
+  : [];
+
 const edges = notes.reduce((a, n) => a + n.links.length, 0);
 const withCtx = Object.values(backlinks).flat().filter(b => b.excerpt).length;
 const total = Object.values(backlinks).flat().length;
@@ -442,6 +448,9 @@ console.log('готово: ' + plural(notes.length, 'заметка', 'заме�
             plural(pages.length, 'страница', 'страницы', 'страниц') + ', ' +
             plural(edges, 'связь', 'связи', 'связей') + ' -> dist/');
 console.log('контекст у обратных ссылок: ' + withCtx + ' из ' + total);
+if (inbox.length)   console.log('~ в inbox ждёт разбора: ' +
+                      plural(inbox.length, 'запись', 'записи', 'записей') +
+                      ' (node new.mjs --inbox)');
 if (broken.length)  console.log('! битые ссылки: ' + broken.join(', '));
 if (orphans.length) console.log('! ни с чем не связаны: ' + orphans.map(n => n.id).join(', '));
 

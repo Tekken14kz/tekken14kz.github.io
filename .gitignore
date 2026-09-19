@@ -2,3 +2,9 @@ dist/
 artifact/
 node_modules/
 .DS_Store
+
+# Obsidian: настройки волта версионируем, рабочее состояние — нет
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+.trash/

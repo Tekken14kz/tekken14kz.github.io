@@ -217,7 +217,16 @@ function plainClick(e){
   return !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0);
 }
 
-/* ── Карта сада: пружинная раскладка ───────────────────── */
+/* ── Карта сада ───────────────────────────────────────────
+   Живая пружинная модель без библиотек. Интегратор такой же, как в
+   d3-force: силы меняют скорость, скорость гасится, alpha остывает.
+   Узел можно таскать, вид — двигать колесом, пальцами и перетаскиванием. */
+var SVGNS = 'http://www.w3.org/2000/svg';
+var MAP_W = 800, MAP_H = 560, MAP_CX = MAP_W / 2, MAP_CY = MAP_H / 2;
+/* Та же шкала, что и у штрихов: пунктир -> штрих -> сплошная с заливкой. */
+var DASH   = { seed:'1.5 2.5', grow:'5 3', ever:'' };
+var STROKE = { seed:'var(--warm)', grow:'var(--accent)', ever:'var(--accent)' };
+
 var edges = [];
 (function buildEdges(){
   var seen = {};
@@ -233,117 +242,346 @@ var edges = [];
   });
 })();
 
-function layout(){
-  var n = NOTES.length;
-  var pos = [];
-  for (var i = 0; i < n; i++){
-    var a = (i / n) * Math.PI * 2;
-    pos.push({ x: Math.cos(a) * 130, y: Math.sin(a) * 130 });
-  }
-  var L = 95, KS = 0.055, KR = 5200, KC = 0.010;
-  for (var it = 0; it < 450; it++){
-    var fx = new Array(n).fill(0), fy = new Array(n).fill(0);
-    for (var i2 = 0; i2 < n; i2++){
-      for (var j = i2 + 1; j < n; j++){
-        var dx = pos[i2].x - pos[j].x, dy = pos[i2].y - pos[j].y;
-        var d2 = dx * dx + dy * dy || 0.01, d = Math.sqrt(d2);
-        var f = KR / d2;
-        fx[i2] += dx / d * f; fy[i2] += dy / d * f;
-        fx[j]  -= dx / d * f; fy[j]  -= dy / d * f;
-      }
-    }
-    edges.forEach(function(e){
-      var a1 = e[0], b1 = e[1];
-      var dx = pos[b1].x - pos[a1].x, dy = pos[b1].y - pos[a1].y;
-      var d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-      var f = (d - L) * KS;
-      fx[a1] += dx / d * f; fy[a1] += dy / d * f;
-      fx[b1] -= dx / d * f; fy[b1] -= dy / d * f;
-    });
-    for (var k = 0; k < n; k++){
-      fx[k] -= pos[k].x * KC; fy[k] -= pos[k].y * KC;
-      pos[k].x += Math.max(-8, Math.min(8, fx[k] * 0.85));
-      pos[k].y += Math.max(-8, Math.min(8, fy[k] * 0.85));
-    }
-  }
-  return pos;
+var sim = null, svgEl = null, viewG = null;
+var edgeEls = [], nodeEls = [], labelEls = [];
+var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function svgNode(name, attrs){
+  var e = document.createElementNS(SVGNS, name);
+  for (var k in attrs) if (attrs[k] !== '') e.setAttribute(k, attrs[k]);
+  return e;
 }
 
-var mapDrawn = false;
-function drawMap(){
-  if (mapDrawn) return;
-  mapDrawn = true;
+function makeSim(){
+  var n = NOTES.length;
+  return {
+    alpha:1, target:0, raf:0, k:1, tx:0, ty:0, cx:MAP_CX, fit:true,
+    nodes: NOTES.map(function(note, i){
+      var a = (i / n) * Math.PI * 2;
+      return {
+        i:i, stage:note.stage,
+        r: 5 + Math.min((BACK[note.id] || []).length, 6) * 1.7,
+        w: Math.min(note.title.length, 24) * 5.4 + 14,   // сколько места ест подпись
+        x: MAP_CX + Math.cos(a) * 150, y: MAP_CY + Math.sin(a) * 150,
+        vx:0, vy:0, fx:null, fy:null, side:1
+      };
+    })
+  };
+}
 
-  var W = 800, H = 560, HM = 100, VM = 40;
-  var pos = layout();
-  var xs = pos.map(function(p){ return p.x; }), ys = pos.map(function(p){ return p.y; });
+function step(){
+  var nodes = sim.nodes, n = nodes.length, a = sim.alpha, i, j;
+  /* Равновесие посчитано, а не подобрано: на рабочем радиусе притяжение к
+     центру (R * CENTER) уравновешивает сумму отталкиваний (~n * REPEL / R²),
+     то есть R растёт как кубический корень из REPEL.
+     Притяжение по осям разное: поле горизонтальное, и граф должен
+     расходиться вширь, а не вытягиваться столбом. */
+  var REPEL = 56000, LINK = 150, LINK_K = 0.55, DECAY = 0.62;
+  var CENTER_X = 0.010, CENTER_Y = 0.014;
+  var LABEL_H = 17, LABEL_K = 0.22;
+
+  for (i = 0; i < n; i++){
+    for (j = i + 1; j < n; j++){
+      var p = nodes[i], q = nodes[j];
+      var dx = q.x - p.x, dy = q.y - p.y;
+      var d2 = dx * dx + dy * dy || 1, d = Math.sqrt(d2);
+      /* Вблизи 1/d² улетает в бесконечность — ограничиваем, иначе узлы
+         разлетаются при случайном совпадении координат. */
+      var f = Math.min(REPEL * a / d2, 40), ux = dx / d, uy = dy / d;
+      p.vx -= ux * f; p.vy -= uy * f;
+      q.vx += ux * f; q.vy += uy * f;
+
+      /* Узел — это не точка, а точка с горизонтальной строкой подписи.
+         Если две подписи оказались на одной высоте и близко по горизонтали,
+         разводим их вверх-вниз: вбок расталкивать бессмысленно, строка
+         всё равно длинная. */
+      if (Math.abs(dy) < LABEL_H && Math.abs(dx) < (p.w + q.w) / 2){
+        var push = (LABEL_H - Math.abs(dy)) * LABEL_K * a;
+        var sgn = dy >= 0 ? 1 : -1;
+        p.vy -= sgn * push; q.vy += sgn * push;
+      }
+    }
+  }
+  edges.forEach(function(e){
+    var p = nodes[e[0]], q = nodes[e[1]];
+    var dx = q.x - p.x, dy = q.y - p.y;
+    var d = Math.sqrt(dx * dx + dy * dy) || 1;
+    var f = (d - LINK) / d * a * LINK_K * 0.5;
+    p.vx += dx * f; p.vy += dy * f;
+    q.vx -= dx * f; q.vy -= dy * f;
+  });
+  nodes.forEach(function(p){
+    if (p.fx !== null){ p.x = p.fx; p.y = p.fy; p.vx = 0; p.vy = 0; return; }
+    p.vx += (MAP_CX - p.x) * CENTER_X * a;
+    p.vy += (MAP_CY - p.y) * CENTER_Y * a;
+    p.vx *= DECAY; p.vy *= DECAY;
+    p.x += p.vx; p.y += p.vy;
+  });
+  sim.alpha += (sim.target - sim.alpha) * 0.0228;
+}
+
+function paint(){
+  viewG.setAttribute('transform',
+    'translate(' + sim.tx.toFixed(1) + ',' + sim.ty.toFixed(1) + ') scale(' + sim.k.toFixed(3) + ')');
+  edges.forEach(function(e, i){
+    var p = sim.nodes[e[0]], q = sim.nodes[e[1]], l = edgeEls[i];
+    l.setAttribute('x1', p.x.toFixed(1)); l.setAttribute('y1', p.y.toFixed(1));
+    l.setAttribute('x2', q.x.toFixed(1)); l.setAttribute('y2', q.y.toFixed(1));
+  });
+  sim.nodes.forEach(function(p, i){
+    nodeEls[i].setAttribute('transform', 'translate(' + p.x.toFixed(1) + ',' + p.y.toFixed(1) + ')');
+    /* Подпись держим повёрнутой внутрь, но с запасом — иначе она мигает,
+       когда узел дышит около середины. */
+    var want = p.x > sim.cx + 30 ? -1 : (p.x < sim.cx - 30 ? 1 : p.side);
+    if (want !== p.side){
+      p.side = want;
+      labelEls[i].setAttribute('x', (want * (p.r + 6)).toFixed(1));
+      labelEls[i].setAttribute('text-anchor', want === 1 ? 'start' : 'end');
+    }
+  });
+}
+
+function frame(){
+  step(); paint();
+  if (sim.alpha > 0.004 || sim.target > 0){
+    sim.raf = requestAnimationFrame(frame);
+  } else {
+    sim.raf = 0;
+    /* Раскладка устоялась — вписываем её в панель. Размер графа задают
+       пружины рёбер, а не поле, поэтому подгонять надо вид, а не силы:
+       так карта останется читаемой и на полусотне заметок. */
+    if (sim.fit){ sim.fit = false; fitView(); paint(); }
+  }
+}
+
+function heat(target, alpha){
+  sim.target = target;
+  if (alpha !== undefined) sim.alpha = alpha;
+  if (reduceMotion){
+    for (var i = 0; i < 400; i++) step();
+    sim.alpha = 0; sim.target = 0; paint();
+    return;
+  }
+  if (!sim.raf) sim.raf = requestAnimationFrame(frame);
+}
+
+/* ── Вид: масштаб и сдвиг ──────────────────────────────── */
+function svgScale(){ var m = svgEl.getScreenCTM(); return m ? m.a : 1; }
+
+function toSvgPoint(ev){
+  var m = svgEl.getScreenCTM();
+  if (!m) return { x:0, y:0 };
+  return new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse());
+}
+
+function toGraph(ev){
+  var p = toSvgPoint(ev);
+  return { x: (p.x - sim.tx) / sim.k, y: (p.y - sim.ty) / sim.k };
+}
+
+function zoomTo(k2, ev){
+  k2 = Math.max(0.35, Math.min(5, k2));
+  var p = toSvgPoint(ev);
+  sim.tx = p.x - (p.x - sim.tx) * (k2 / sim.k);
+  sim.ty = p.y - (p.y - sim.ty) * (k2 / sim.k);
+  sim.k = k2;
+}
+
+function fitView(){
+  var xs = sim.nodes.map(function(p){ return p.x; });
+  var ys = sim.nodes.map(function(p){ return p.y; });
   var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
   var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
-  var s = Math.min((W - HM * 2) / Math.max(1, maxX - minX), (H - VM * 2) / Math.max(1, maxY - minY));
-  var ox = (W - (maxX - minX) * s) / 2 - minX * s;
-  var oy = (H - (maxY - minY) * s) / 2 - minY * s;
-  var P = pos.map(function(p){ return { x: p.x * s + ox, y: p.y * s + oy }; });
+  var PADX = 130, PADY = 46;            // запас под подписи справа и слева
+  var w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
+  sim.k  = Math.min((MAP_W - PADX * 2) / w, (MAP_H - PADY * 2) / h, 2.2);
+  sim.cx = (minX + maxX) / 2;
+  sim.tx = MAP_W / 2 - sim.cx * sim.k;
+  sim.ty = MAP_H / 2 - (minY + maxY) / 2 * sim.k;
+}
 
-  var stroke = { seed:'var(--warm)', grow:'var(--accent)', ever:'var(--accent)' };
-  /* Та же шкала, что и у штрихов: пунктир -> штрих -> сплошная с заливкой. */
-  var DASH = { seed:' stroke-dasharray="1.5 2.5"', grow:' stroke-dasharray="5 3"', ever:'' };
+function resetView(){ if (!sim) return; fitView(); paint(); }
 
-  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Граф связей между заметками">';
-  edges.forEach(function(e){
-    svg += '<line class="edge" data-edge="' + e[0] + '-' + e[1] + '" ' +
-           'x1="' + P[e[0]].x.toFixed(1) + '" y1="' + P[e[0]].y.toFixed(1) + '" ' +
-           'x2="' + P[e[1]].x.toFixed(1) + '" y2="' + P[e[1]].y.toFixed(1) + '"></line>';
+function shuffle(){
+  if (!sim) return;
+  sim.nodes.forEach(function(p){
+    var a = Math.random() * Math.PI * 2;
+    p.x = MAP_CX + Math.cos(a) * (60 + Math.random() * 140);
+    p.y = MAP_CY + Math.sin(a) * (60 + Math.random() * 140);
+    p.vx = 0; p.vy = 0; p.fx = null; p.fy = null;
   });
-  NOTES.forEach(function(n, i){
-    var bl = (BACK[n.id] || []).length;
-    var r  = 5 + Math.min(bl, 6) * 1.7;
-    var right = P[i].x > W / 2;
-    var label = n.title.length > 22 ? n.title.slice(0, 21) + '…' : n.title;
-    svg += '<g class="node" data-i="' + i + '" data-id="' + n.id + '" tabindex="0" role="button" aria-label="' + esc(n.title) + '">';
-    svg += '<circle cx="' + P[i].x.toFixed(1) + '" cy="' + P[i].y.toFixed(1) + '" r="' + r.toFixed(1) +
-           '" fill="' + (n.stage === 'ever' ? stroke[n.stage] : 'none') +
-           '" stroke="' + stroke[n.stage] + '" stroke-width="1.6"' + DASH[n.stage] + '></circle>';
-    svg += '<text x="' + (P[i].x + (right ? -(r + 6) : (r + 6))).toFixed(1) + '" y="' + (P[i].y + 3.4).toFixed(1) +
-           '" text-anchor="' + (right ? 'end' : 'start') + '">' + esc(label) + '</text>';
-    svg += '</g>';
-  });
-  svg += '</svg>';
-  mapBody.innerHTML = svg;
+  sim.fit = true;
+  heat(0, 1);
+}
 
-  var neighbours = NOTES.map(function(){ return {}; });
-  edges.forEach(function(e){ neighbours[e[0]][e[1]] = 1; neighbours[e[1]][e[0]] = 1; });
+/* ── Сборка и события ──────────────────────────────────── */
+function buildMap(){
+  sim = makeSim();
+
+  svgEl = svgNode('svg', { viewBox: '0 0 ' + MAP_W + ' ' + MAP_H,
+                           preserveAspectRatio: 'xMidYMid meet',
+                           role: 'img', 'aria-label': 'Граф связей между заметками' });
+  viewG = svgNode('g', {});
+  var gEdges = svgNode('g', {}), gNodes = svgNode('g', {});
+
+  edgeEls = edges.map(function(){
+    var l = svgNode('line', { 'class':'edge', 'vector-effect':'non-scaling-stroke' });
+    gEdges.appendChild(l);
+    return l;
+  });
+
+  nodeEls = []; labelEls = [];
+  sim.nodes.forEach(function(p, i){
+    var note = NOTES[i];
+    var g = svgNode('g', { 'class':'node', 'data-i':i, 'data-id':note.id,
+                           tabindex:'0', role:'button', 'aria-label':note.title });
+    g.appendChild(svgNode('circle', {
+      r: p.r.toFixed(1),
+      fill: note.stage === 'ever' ? STROKE[note.stage] : 'none',
+      stroke: STROKE[note.stage], 'stroke-width':1.6,
+      'stroke-dasharray': DASH[note.stage],
+      'vector-effect':'non-scaling-stroke'
+    }));
+    var t = svgNode('text', { x:(p.r + 6).toFixed(1), y:3.4, 'text-anchor':'start' });
+    t.textContent = note.title.length > 24 ? note.title.slice(0, 23) + '…' : note.title;
+    g.appendChild(t);
+    gNodes.appendChild(g);
+    nodeEls.push(g); labelEls.push(t);
+  });
+
+  viewG.appendChild(gEdges); viewG.appendChild(gNodes);
+  svgEl.appendChild(viewG);
+  mapBody.innerHTML = '';
+  mapBody.appendChild(svgEl);
+
+  wireMap();
+  /* Первый кадр рисуем сразу: requestAnimationFrame не тикает, пока вкладка
+     скрыта, и карта иначе висит в нуле до первого показа. */
+  paint();
+  heat(0, 1);
+}
+
+function wireMap(){
+  var neigh = NOTES.map(function(){ return {}; });
+  edges.forEach(function(e){ neigh[e[0]][e[1]] = 1; neigh[e[1]][e[0]] = 1; });
+
+  var pointers = new Map(), drag = null, pan = null, pinch = null, moved = 0;
 
   function hot(i){
     mapEl.classList.add('dimmed');
-    mapBody.querySelectorAll('.node').forEach(function(g){
-      var k = Number(g.dataset.i);
-      g.classList.toggle('hot', k === i || neighbours[i][k] === 1);
-    });
-    mapBody.querySelectorAll('.edge').forEach(function(l){
-      var p = l.dataset.edge.split('-');
-      l.classList.toggle('hot', Number(p[0]) === i || Number(p[1]) === i);
-    });
+    nodeEls.forEach(function(g, k){ g.classList.toggle('hot', k === i || neigh[i][k] === 1); });
+    edgeEls.forEach(function(l, k){ l.classList.toggle('hot', edges[k][0] === i || edges[k][1] === i); });
   }
   function cool(){
     mapEl.classList.remove('dimmed');
-    mapBody.querySelectorAll('.hot').forEach(function(el){ el.classList.remove('hot'); });
+    nodeEls.forEach(function(g){ g.classList.remove('hot'); });
+    edgeEls.forEach(function(l){ l.classList.remove('hot'); });
   }
 
-  mapBody.querySelectorAll('.node').forEach(function(g){
-    var i = Number(g.dataset.i);
-    g.addEventListener('mouseenter', function(){ hot(i); });
+  nodeEls.forEach(function(g, i){
+    g.addEventListener('mouseenter', function(){ if (!drag) hot(i); });
+    g.addEventListener('mouseleave', function(){ if (!drag) cool(); });
     g.addEventListener('focus', function(){ hot(i); });
-    g.addEventListener('mouseleave', cool);
-    g.addEventListener('blur', cool);
-    g.addEventListener('click', function(){ open(g.dataset.id, null); });
+    g.addEventListener('blur', function(){ if (!drag) cool(); });
     g.addEventListener('keydown', function(ev){
       if (ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); open(g.dataset.id, null); }
     });
   });
+
+  svgEl.addEventListener('pointerdown', function(ev){
+    try { svgEl.setPointerCapture(ev.pointerId); } catch(e){}
+    pointers.set(ev.pointerId, { x:ev.clientX, y:ev.clientY });
+    moved = 0;
+
+    if (pointers.size === 2){
+      var pts = Array.from(pointers.values());
+      pinch = { d: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) };
+      drag = null; pan = null;
+      return;
+    }
+
+    var g = ev.target.closest ? ev.target.closest('.node') : null;
+    if (g){
+      var i = Number(g.dataset.i), gp = toGraph(ev);
+      drag = { node: sim.nodes[i], i: i };
+      drag.node.fx = gp.x; drag.node.fy = gp.y;
+      hot(i);
+      heat(0.3, Math.max(sim.alpha, 0.3));
+    } else {
+      pan = { x:ev.clientX, y:ev.clientY };
+    }
+    svgEl.classList.add('grabbing');
+  });
+
+  svgEl.addEventListener('pointermove', function(ev){
+    if (!pointers.has(ev.pointerId)) return;
+    var prev = pointers.get(ev.pointerId);
+    moved += Math.abs(ev.clientX - prev.x) + Math.abs(ev.clientY - prev.y);
+    pointers.set(ev.pointerId, { x:ev.clientX, y:ev.clientY });
+
+    if (pinch && pointers.size === 2){
+      var pts = Array.from(pointers.values());
+      var d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      zoomTo(sim.k * (d / (pinch.d || d)),
+             { clientX:(pts[0].x + pts[1].x) / 2, clientY:(pts[0].y + pts[1].y) / 2 });
+      pinch.d = d;
+      paint();
+      return;
+    }
+    if (drag){
+      var gp = toGraph(ev);
+      drag.node.fx = gp.x; drag.node.fy = gp.y;
+      if (!sim.raf) paint();
+      return;
+    }
+    if (pan){
+      var sc = svgScale();
+      sim.tx += (ev.clientX - pan.x) / sc;
+      sim.ty += (ev.clientY - pan.y) / sc;
+      pan = { x:ev.clientX, y:ev.clientY };
+      paint();
+    }
+  });
+
+  function release(ev){
+    pointers.delete(ev.pointerId);
+    try { svgEl.releasePointerCapture(ev.pointerId); } catch(e){}
+    if (pointers.size < 2) pinch = null;
+
+    if (drag){
+      var d = drag; drag = null;
+      d.node.fx = null; d.node.fy = null;
+      heat(0);
+      /* Короткое нажатие без протяжки — это клик, а не перетаскивание. */
+      if (moved < 5){ open(NOTES[d.i].id, null); return; }
+      cool();
+    }
+    pan = null;
+    svgEl.classList.remove('grabbing');
+  }
+  svgEl.addEventListener('pointerup', release);
+  svgEl.addEventListener('pointercancel', release);
+
+  svgEl.addEventListener('wheel', function(ev){
+    ev.preventDefault();
+    zoomTo(sim.k * Math.exp(-ev.deltaY * 0.0015), ev);
+    paint();
+  }, { passive:false });
+
+  svgEl.addEventListener('dblclick', function(ev){ ev.preventDefault(); resetView(); });
 }
 
-function openMap(){ drawMap(); mapEl.hidden = false; }
-function closeMap(){ mapEl.hidden = true; }
+var mapBuilt = false;
+function drawMap(){ if (!mapBuilt){ mapBuilt = true; buildMap(); } }
+function openMap(){
+  drawMap();
+  mapEl.hidden = false;
+  if (sim && sim.alpha < 0.02) heat(0, 0.15);
+}
+function closeMap(){
+  mapEl.hidden = true;
+  if (sim && sim.raf){ cancelAnimationFrame(sim.raf); sim.raf = 0; }
+}
 function mapOpen(){ return !mapEl.hidden; }
 
 /* ── Тема ──────────────────────────────────────────────── */
@@ -423,6 +661,8 @@ document.querySelector('.rail-controls').addEventListener('click', function(e){
 
 document.getElementById('mapBtn').addEventListener('click', openMap);
 document.getElementById('mapClose').addEventListener('click', closeMap);
+document.getElementById('mapReset').addEventListener('click', resetView);
+document.getElementById('mapShuffle').addEventListener('click', shuffle);
 mapEl.addEventListener('click', function(e){ if (e.target === mapEl) closeMap(); });
 themeBtn.addEventListener('click', function(){
   applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]);

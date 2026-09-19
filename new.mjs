@@ -6,11 +6,12 @@
  *   node new.mjs "Заголовок" --stage grow      сразу не росток
  *   node new.mjs "Заголовок" --push            создать, закоммитить и запушить
  *   node new.mjs --tend obratnye               обновить дату последнего ухода
- *   node new.mjs --tend obratnye --push        то же и сразу выложить
+ *   node new.mjs --inbox                       что надиктовано и ждёт разбора
+ *   node new.mjs --promote golos-1             превратить запись из inbox в заметку
  *
  * Зависимостей нет.
  */
-import { writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -18,6 +19,7 @@ import { createInterface } from 'node:readline/promises';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const NOTES = join(ROOT, 'notes');
+const INBOX = join(ROOT, 'inbox');
 
 const TRANSLIT = {
   а:'a', б:'b', в:'v', г:'g', д:'d', е:'e', ё:'e', ж:'zh', з:'z', и:'i', й:'y',
@@ -57,6 +59,55 @@ const has = name => argv.includes('--' + name);
 const title = argv.filter(a => !a.startsWith('--') &&
   argv[argv.indexOf(a) - 1] !== '--stage' &&
   argv[argv.indexOf(a) - 1] !== '--tend').join(' ').trim();
+
+/* ── Карантин: что надиктовано и ждёт разбора ────────────── */
+function inboxFiles(){
+  if (!existsSync(INBOX)) return [];
+  return readdirSync(INBOX).filter(f => f.endsWith('.md')).sort();
+}
+
+if (has('inbox')){
+  const files = inboxFiles();
+  if (!files.length){ console.log('в inbox пусто'); process.exit(0); }
+  console.log('в inbox ' + files.length + ':');
+  for (const f of files){
+    const body = readFileSync(join(INBOX, f), 'utf8').replace(/^---[\s\S]*?---\n/, '').trim();
+    const first = body.split('\n').find(l => l.trim()) || '(пусто)';
+    console.log('  ' + f.replace(/\.md$/, '').padEnd(22) + ' ' + first.slice(0, 60));
+  }
+  console.log('\nразобрать: node new.mjs --promote <имя> ["Заголовок"]');
+  process.exit(0);
+}
+
+/* Разбор: надиктованное становится заметкой только руками — в этом и смысл
+   предварительной модерации. */
+if (has('promote')){
+  const src = flag('promote').replace(/\.md$/, '');
+  const from = join(INBOX, src + '.md');
+  if (!existsSync(from)){
+    console.error('нет такой записи в inbox: ' + src);
+    console.error('есть: ' + inboxFiles().map(f => f.replace(/\.md$/, '')).join(', ') || '(пусто)');
+    process.exit(1);
+  }
+  const raw = readFileSync(from, 'utf8').replace(/^---[\s\S]*?---\n/, '').trim();
+  const lines = raw.split('\n');
+  /* Заголовок берём из аргумента, иначе первой строкой записи. */
+  const given = argv.filter(a => !a.startsWith('--') && a !== flag('promote')).join(' ').trim();
+  const name = given || lines[0].replace(/^#+\s*/, '').trim().slice(0, 80);
+  if (!name){ console.error('нечего назвать: запись пустая'); process.exit(1); }
+  const body = given ? raw : lines.slice(1).join('\n').trim();
+
+  const pid = slugify(name);
+  const to = join(NOTES, pid + '.md');
+  if (existsSync(to)){ console.error('уже растёт: notes/' + pid + '.md'); process.exit(1); }
+
+  writeFileSync(to, `---\ntitle: ${name}\nstage: ${flag('stage') || 'seed'}\n` +
+                    `planted: ${today()}\ntended: ${today()}\n---\n\n${body}\n`);
+  rmSync(from);
+  console.log('разобрано: inbox/' + src + '.md  ->  notes/' + pid + '.md');
+  if (has('push')) push('разобрано из inbox: ' + name);
+  process.exit(0);
+}
 
 /* ── Обновить дату ухода ─────────────────────────────────── */
 if (has('tend')){
